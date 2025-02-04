@@ -3,7 +3,7 @@ import dotenv from "dotenv"
 import { connectDb,monguri } from './db_connect';
 import publicRoute from './routes/index'
 
-const app:Express = express();
+const app = express();
 
 dotenv.config();
 connectDb();

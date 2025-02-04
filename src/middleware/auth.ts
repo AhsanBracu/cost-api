@@ -1,6 +1,5 @@
 import { NextFunction } from "express";
 import dotenv from 'dotenv';
-import donenv from 'dotenv'
 import jwt from "jsonwebtoken";
 
 dotenv.config()
