@@ -5,6 +5,7 @@ import User from "../models/UserModel";
 import bcrypt from 'bcrypt';
 import donenv from 'dotenv'
 import jwt from "jsonwebtoken";
+import { NotFoundError } from "../errors/NotFoundError";
 
 donenv.config();
 
@@ -45,7 +46,7 @@ const createToken = async (findUser: Iuser & Document):Promise<string>=>{
 
         const findUser = await User.findOne({ email: user.email }) 
         if (!findUser)
-            throw new Error("Wrong email user");
+            throw new NotFoundError("Wrong email user");
         else {
 
             const isMatch = await passwordCheck(user.password, findUser.password);

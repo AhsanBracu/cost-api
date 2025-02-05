@@ -1,4 +1,4 @@
-import {Schema,Model} from "mongoose";
+import mongoose, {Schema,Model, mongo} from "mongoose";
 import { Iuser } from "./types/IUser";
 import bcrypt from 'bcrypt'
 
@@ -21,6 +21,6 @@ UserSchema.pre('save', async function (next) {
 });
 
 
-const User :Model<Iuser> = new Model('User',UserSchema);
+const User :Model<Iuser> = mongoose.model<Iuser>('User',UserSchema);
 
 export default User;
