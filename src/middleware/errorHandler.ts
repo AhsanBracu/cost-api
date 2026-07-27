@@ -1,15 +1,16 @@
-import  {NextFunction, Request,Response}  from "express";
-import { BaseError } from "../errors/BaseError";
+import { NextFunction, Request, Response } from "express";
+import { AppError } from "../errors/AppError";
 
-const errorHandler = (err: BaseError, req: Request, res: Response, next: NextFunction) =>{
-
-    console.log(`[ERROR] ${err.name}: ${err.message}`);
-
-    res.status(err.httpcode || 500).json({
-        error: err.name,
-        message: err.message || "Something went wrong!"
-    })
+export const notFoundHandler = (req: Request, res: Response) => {
+    res.status(404).json({ error: `Route ${req.method} ${req.originalUrl} not found` });
 };
 
+export const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof AppError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+    }
 
-export default errorHandler;
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+};

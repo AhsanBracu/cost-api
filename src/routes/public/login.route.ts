@@ -1,5 +1,6 @@
-import  express,{NextFunction, Request,Response}  from "express";
+import  express,{Request,Response}  from "express";
 import Authservice  from "../../services/register";
+import { catchAsync } from "../../utils/catchAsync";
 
 const router = express.Router();
 router.get('/list',(req: Request, res: Response) => {
@@ -7,22 +8,22 @@ router.get('/list',(req: Request, res: Response) => {
 res.send("get list from here");
 });
 
-router.post('/login',async(req:Request,res:Response,next:NextFunction)=>{
-  //  try{
-    const data  = req.body;
-    console.log("login", req.body);
-    let result =  await Authservice.login(data);
+router.post('/login', catchAsync(async(req:Request,res:Response)=>{
+    const data = req.body;
+    const result = await Authservice.login(data);
+    res.send({
+        user: result.user,
+        token: result.token
+    })
+}))
 
-  //  }catch(err){
-       // next(err);
-   // }
-})
-
-router.get('/register',async(req:Request,res:Response)=>{
-    const data  = req.body;
-    let result =  await Authservice.register(data);
-
-})
+router.post('/register', catchAsync(async(req:Request,res:Response)=>{
+    const data = req.body;
+    const result = await Authservice.register(data);
+    res.status(201).send({
+     result: result
+    })
+}))
 
 
 export default router;

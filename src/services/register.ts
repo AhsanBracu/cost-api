@@ -1,17 +1,16 @@
-import { Document, Model } from "mongoose"
-import UserModel from "../models/UserModel"
+import { Document } from "mongoose"
 import { Iuser } from "../models/types/IUser";
 import User from "../models/UserModel";
 import bcrypt from 'bcrypt';
 import donenv from 'dotenv'
 import jwt from "jsonwebtoken";
-import { NotFoundError } from "../errors/NotFoundError";
+import { UnauthorizedError, ConflictError } from "../errors/AppError";
 
 donenv.config();
 
-type userInput = Omit<Iuser & Document, '_id' | 'v'>;
+type userInput = Omit<Iuser & Document, '_id' | '__v'>;
 
-type userReturn ={ 
+type userReturn ={
     user: Iuser & Document;
     token : string
 }
@@ -24,7 +23,7 @@ const passwordCheck = async (inputPassword:string, storedPassword:string):Promis
 const createToken = async (findUser: Iuser & Document):Promise<string>=>{
     const secretKey = process.env.SECRET_KEY;
     if(!secretKey)
-       throw new Error("Scret key Error");
+       throw new Error("Secret key error");
 
     return jwt.sign({ _id: findUser._id as string, name: findUser.name }, secretKey, {
         expiresIn: "2 days",
@@ -35,29 +34,26 @@ const createToken = async (findUser: Iuser & Document):Promise<string>=>{
 
  const AuthService = {
     register : async (user: userInput) => {
-        try {
-            await User.create(user);
-        } catch (error) {
-            throw error;
-        }
+        const existing = await User.findOne({ email: user.email });
+        if (existing)
+            throw new ConflictError("Email already registered");
+
+        return User.create(user);
     },
 
     login : async (user: userInput)  : Promise <userReturn> => {
 
-        const findUser = await User.findOne({ email: user.email }) 
+        const findUser = await User.findOne({ email: user.email })
         if (!findUser)
-            throw new NotFoundError("Wrong email user");
-        else {
+            throw new UnauthorizedError("Invalid email or password");
 
-            const isMatch = await passwordCheck(user.password, findUser.password);
-            if (isMatch){
-               const token =await createToken(findUser);
-                  return { user:findUser, token: token };
-            }
-            else
-                throw new Error("Wrong Password");
-        }
-    }   
+        const isMatch = await passwordCheck(user.password, findUser.password);
+        if (!isMatch)
+            throw new UnauthorizedError("Invalid email or password");
+
+        const token = await createToken(findUser);
+        return { user:findUser, token: token };
+    }
 }
 
 export default AuthService;
