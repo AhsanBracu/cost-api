@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { passwordSchema } from "./common.schema";
 
 export const registerSchema = z.object({
     name: z.string().min(1, "Name is required"),
     email: z.email("Invalid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: passwordSchema,
 });
 
 export const loginSchema = z.object({
@@ -17,5 +18,5 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
     token: z.string().min(1, "Token is required"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    newPassword: passwordSchema,
 });

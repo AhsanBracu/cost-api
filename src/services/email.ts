@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 
 export const sendVerificationEmail = async (to: string, token: string) => {
-    const verifyUrl = `${CLIENT_URL}/api/public/verify-email?token=${token}`;
+    const verifyUrl = `${CLIENT_URL}/verify-email?token=${token}`;
 
     await transporter.sendMail({
         from: process.env.GMAIL_USER,
