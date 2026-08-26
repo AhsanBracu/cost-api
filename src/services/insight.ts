@@ -1,3 +1,4 @@
+import { resolveFamilyId, assertOptionalFamilyMember, assertFamilyMember } from "./familyContext";
 import { Types } from "mongoose";
 import Cost from "../models/CostModel";
 
@@ -37,9 +38,9 @@ const getSameDayLastMonth = (date: Date) => {
     return new Date(targetYear, targetMonth, Math.min(day, daysInTargetMonth));
 };
 
-const getTotalsForRange = async (userId: string, start: Date, end: Date): Promise<CurrencyTotal[]> => {
+const getTotalsForRange = async (familyId: string, start: Date, end: Date): Promise<CurrencyTotal[]> => {
     return Cost.aggregate([
-        { $match: { user: new Types.ObjectId(userId), isDeleted: false, date: { $gte: start, $lte: end } } },
+        { $match: { family: new Types.ObjectId(familyId), isDeleted: false, date: { $gte: start, $lte: end } } },
         { $group: { _id: "$currency", total: { $sum: "$amount" } } },
         { $project: { _id: 0, currency: "$_id", total: 1 } },
     ]);
@@ -47,6 +48,7 @@ const getTotalsForRange = async (userId: string, start: Date, end: Date): Promis
 
 const InsightService = {
     getDailyComparison: async (userId: string, referenceDate?: Date) => {
+        const familyId = await resolveFamilyId(userId);
         const today = referenceDate ?? new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
@@ -54,10 +56,10 @@ const InsightService = {
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
 
         const [todayTotals, yesterdayTotals, lastMonthTotals, monthToDateTotals] = await Promise.all([
-            getTotalsForRange(userId, startOfDay(today), endOfDay(today)),
-            getTotalsForRange(userId, startOfDay(yesterday), endOfDay(yesterday)),
-            getTotalsForRange(userId, startOfDay(lastMonthSameDay), endOfDay(lastMonthSameDay)),
-            getTotalsForRange(userId, monthStart, endOfDay(today)),
+            getTotalsForRange(familyId, startOfDay(today), endOfDay(today)),
+            getTotalsForRange(familyId, startOfDay(yesterday), endOfDay(yesterday)),
+            getTotalsForRange(familyId, startOfDay(lastMonthSameDay), endOfDay(lastMonthSameDay)),
+            getTotalsForRange(familyId, monthStart, endOfDay(today)),
         ]);
 
         const currencies = new Set([

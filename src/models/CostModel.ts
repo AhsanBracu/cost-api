@@ -2,7 +2,11 @@ import mongoose, { Schema } from "mongoose";
 import { Icost, PaymentMethod } from "./types/ICost";
 
 const CostSchema: Schema<Icost> = new Schema({
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    family: { type: Schema.Types.ObjectId, ref: "Family", required: true, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    paidBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // null is meaningful here: a shared household cost, not "unset".
+    forWhom: { type: Schema.Types.ObjectId, ref: "User", default: null },
     amount: { type: Number, required: true, min: 0 },
     currency: { type: String, required: true, default: "SEK" },
     date: { type: Date, required: true },

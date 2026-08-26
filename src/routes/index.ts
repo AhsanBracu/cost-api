@@ -6,6 +6,7 @@ import incomeRouter from './private/income.route';
 import savingsGoalRouter from './private/savingsGoal.route';
 import categoryRouter from './private/category.route';
 import budgetRouter from './private/budget.route';
+import familyRouter from './private/family.route';
 
 const publicRoute= async (app:Express)=>{
 
@@ -16,6 +17,7 @@ app.use('/api/income', incomeRouter);
 app.use('/api/savings-goals', savingsGoalRouter);
 app.use('/api/categories', categoryRouter);
 app.use('/api/budgets', budgetRouter);
+app.use('/api/families', familyRouter);
 }
 
 export default publicRoute;

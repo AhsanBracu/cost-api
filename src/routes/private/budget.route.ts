@@ -14,14 +14,16 @@ const getUserId = (req: Request) => ((req as CustomRequest).token as { _id: stri
 router.get('/', validate(monthQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
     const { year, month } = req.query as any;
-    const result = await BudgetService.getBudgets(userId, year, month);
+    const { member } = req.query as any;
+    const result = await BudgetService.getBudgets(userId, year, month, member);
     res.send(result);
 }));
 
 router.get('/summary', validate(monthQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
     const { year, month } = req.query as any;
-    const summary = await BudgetService.getBudgetSummary(userId, year, month);
+    const { member } = req.query as any;
+    const summary = await BudgetService.getBudgetSummary(userId, year, month, member);
     res.send(summary);
 }));
 
@@ -45,8 +47,8 @@ router.put('/limit', validate(setMonthlyLimitSchema), catchAsync(async (req: Req
 
 router.delete('/limit', validate(monthQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const { year, month } = req.query as any;
-    await BudgetService.deleteMonthlyLimit(userId, year, month);
+    const { year, month, member } = req.query as any;
+    await BudgetService.deleteMonthlyLimit(userId, year, month, member);
     res.send({ message: "Monthly limit removed" });
 }));
 

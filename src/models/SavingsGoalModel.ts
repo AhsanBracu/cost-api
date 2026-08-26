@@ -2,7 +2,9 @@ import mongoose, { Schema } from "mongoose";
 import { IsavingsGoal } from "./types/ISavingsGoal";
 
 const SavingsGoalSchema: Schema<IsavingsGoal> = new Schema({
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    family: { type: Schema.Types.ObjectId, ref: "Family", required: true, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    member: { type: Schema.Types.ObjectId, ref: "User", default: null },
     year: { type: Number, required: true },
     month: { type: Number, required: true, min: 1, max: 12 },
     targetAmount: { type: Number, required: true, min: 0 },

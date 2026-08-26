@@ -14,16 +14,23 @@ router.post('/login', validate(loginSchema), catchAsync(async(req:Request,res:Re
     const data = req.body;
     const result = await Authservice.login(data);
     res.send({
-        user: result.user,
+        // Never echo the password hash back to the client.
+        user: {
+            _id: result.user._id,
+            name: result.user.name,
+            email: result.user.email,
+            isVerified: result.user.isVerified,
+        },
         token: result.token
     })
 }))
 
 router.post('/register', validate(registerSchema), catchAsync(async(req:Request,res:Response)=>{
     const data = req.body;
-    const result = await Authservice.register(data);
+    const { user, emailSent } = await Authservice.register(data);
     res.status(201).send({
-     result: result
+        user: { _id: user._id, name: user.name, email: user.email, isVerified: user.isVerified },
+        emailSent,
     })
 }))
 

@@ -9,7 +9,13 @@ export enum PaymentMethod {
 }
 
 export interface Icost extends Document {
-    user: Types.ObjectId;
+    family: Types.ObjectId;
+    /** Who entered it -- for the audit trail, not for attribution. */
+    createdBy: Types.ObjectId;
+    /** Whose money went out. */
+    paidBy: Types.ObjectId;
+    /** Who it was for; null means a shared household cost. */
+    forWhom: Types.ObjectId | null;
     amount: number;
     currency: string;
     date: Date;

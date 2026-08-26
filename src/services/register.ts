@@ -67,9 +67,20 @@ const verifyPurposeToken = (token: string, purpose: string): jwt.JwtPayload => {
 
         const newUser = await User.create(user);
         const verificationToken = createPurposeToken(newUser._id as string, "email-verification", "1d");
-        await sendVerificationEmail(newUser.email, verificationToken);
 
-        return newUser;
+        // The account exists at this point, so a mail outage must not fail the
+        // request: that would leave an account that can neither re-register
+        // (email taken) nor verify. Surfaced via emailSent so the client can
+        // offer a resend instead.
+        let emailSent = true;
+        try {
+            await sendVerificationEmail(newUser.email, verificationToken);
+        } catch (error) {
+            emailSent = false;
+            console.error("Failed to send verification email:", error);
+        }
+
+        return { user: newUser, emailSent };
     },
 
     verifyEmail : async (token: string) => {

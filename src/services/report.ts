@@ -1,13 +1,33 @@
 import { Types } from "mongoose";
 import Cost from "../models/CostModel";
+import { resolveFamilyId } from "./familyContext";
 
 interface DateRange {
     startDate?: Date;
     endDate?: Date;
 }
 
-const buildMatch = (userId: string, range: DateRange) => {
-    const match: Record<string, unknown> = { user: new Types.ObjectId(userId), isDeleted: false };
+/**
+ * Narrows a report to one person. `forWhom: "shared"` selects household costs,
+ * which are stored with a null forWhom. Omitting both covers the whole family.
+ */
+export interface AttributionFilter {
+    paidBy?: string;
+    forWhom?: string;
+}
+
+const applyAttribution = (match: Record<string, unknown>, filter: AttributionFilter = {}) => {
+    if (filter.paidBy)
+        match.paidBy = new Types.ObjectId(filter.paidBy);
+
+    if (filter.forWhom)
+        match.forWhom = filter.forWhom === "shared" ? null : new Types.ObjectId(filter.forWhom);
+
+    return match;
+};
+
+const buildMatch = (familyId: string, range: DateRange, filter?: AttributionFilter) => {
+    const match: Record<string, unknown> = { family: new Types.ObjectId(familyId), isDeleted: false };
 
     if (range.startDate || range.endDate) {
         match.date = {
@@ -16,21 +36,39 @@ const buildMatch = (userId: string, range: DateRange) => {
         };
     }
 
-    return match;
+    return applyAttribution(match, filter);
 };
 
-const getTotalsByCurrency = async (userId: string, range: { start: Date; end: Date }) => {
+const rangeMatch = (familyId: string, range: { start: Date; end: Date }, filter?: AttributionFilter) =>
+    applyAttribution(
+        {
+            family: new Types.ObjectId(familyId),
+            isDeleted: false,
+            date: { $gte: range.start, $lte: range.end },
+        },
+        filter
+    );
+
+const getTotalsByCurrency = async (
+    familyId: string,
+    range: { start: Date; end: Date },
+    filter?: AttributionFilter
+) => {
     return Cost.aggregate([
-        { $match: { user: new Types.ObjectId(userId), isDeleted: false, date: { $gte: range.start, $lte: range.end } } },
+        { $match: rangeMatch(familyId, range, filter) },
         { $group: { _id: "$currency", total: { $sum: "$amount" }, count: { $sum: 1 } } },
         { $project: { _id: 0, currency: "$_id", total: 1, count: 1 } },
         { $sort: { currency: 1 } },
     ]);
 };
 
-const getDailyBreakdown = async (userId: string, range: { start: Date; end: Date }) => {
+const getDailyBreakdown = async (
+    familyId: string,
+    range: { start: Date; end: Date },
+    filter?: AttributionFilter
+) => {
     return Cost.aggregate([
-        { $match: { user: new Types.ObjectId(userId), isDeleted: false, date: { $gte: range.start, $lte: range.end } } },
+        { $match: rangeMatch(familyId, range, filter) },
         {
             $group: {
                 _id: { date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } }, currency: "$currency" },
@@ -41,6 +79,40 @@ const getDailyBreakdown = async (userId: string, range: { start: Date; end: Date
         { $project: { _id: 0, date: "$_id.date", currency: "$_id.currency", total: 1, count: 1 } },
         { $sort: { date: 1, currency: 1 } },
     ]);
+};
+
+/**
+ * Spending grouped by person. `field` picks the question being asked:
+ * forWhom answers "how much went on each person" (with a `shared` bucket for
+ * household costs), paidBy answers "how much did each person pay out".
+ */
+const groupByPerson = async (match: Record<string, unknown>, field: "forWhom" | "paidBy") => {
+    const rows = await Cost.aggregate([
+        { $match: match },
+        { $group: { _id: { person: `$${field}`, currency: "$currency" }, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id.person",
+                foreignField: "_id",
+                as: "person",
+            },
+        },
+        {
+            $project: {
+                _id: 0,
+                // A null person is a shared household cost, not a missing user.
+                memberId: "$_id.person",
+                name: { $ifNull: [{ $arrayElemAt: ["$person.name", 0] }, "Shared"] },
+                currency: "$_id.currency",
+                total: 1,
+                count: 1,
+            },
+        },
+        { $sort: { name: 1, currency: 1 } },
+    ]);
+
+    return rows;
 };
 
 interface CurrencyTotal {
@@ -98,10 +170,11 @@ const getDayWindow = (reference: Date, days: number, offsetWindows: number) => {
 };
 
 const ReportService = {
-    getSummary: async (userId: string, range: DateRange) => {
-        const match = buildMatch(userId, range);
+    getSummary: async (userId: string, range: DateRange, filter?: AttributionFilter) => {
+        const familyId = await resolveFamilyId(userId);
+        const match = buildMatch(familyId, range, filter);
 
-        const [overall, byCategory, byPaymentMethod] = await Promise.all([
+        const [overall, byCategory, byPaymentMethod, byPerson, byPayer] = await Promise.all([
             Cost.aggregate([
                 { $match: match },
                 { $group: { _id: "$currency", total: { $sum: "$amount" }, count: { $sum: 1 } } },
@@ -120,13 +193,20 @@ const ReportService = {
                 { $project: { _id: 0, paymentMethod: "$_id.paymentMethod", currency: "$_id.currency", total: 1, count: 1 } },
                 { $sort: { paymentMethod: 1, currency: 1 } },
             ]),
+            groupByPerson(match, "forWhom"),
+            groupByPerson(match, "paidBy"),
         ]);
 
-        return { overall, byCategory, byPaymentMethod };
+        return { overall, byCategory, byPaymentMethod, byPerson, byPayer };
     },
 
-    getTrend: async (userId: string, range: DateRange & { interval: "day" | "week" | "month" }) => {
-        const match = buildMatch(userId, range);
+    getTrend: async (
+        userId: string,
+        range: DateRange & { interval: "day" | "week" | "month" },
+        filter?: AttributionFilter
+    ) => {
+        const familyId = await resolveFamilyId(userId);
+        const match = buildMatch(familyId, range, filter);
 
         const dateFormat = range.interval === "day" ? "%Y-%m-%d" : range.interval === "week" ? "%G-W%V" : "%Y-%m";
 
@@ -146,7 +226,12 @@ const ReportService = {
         return { interval: range.interval, data };
     },
 
-    getCompare: async (userId: string, options: { granularity: "day" | "week" | "month"; days: number; referenceDate?: Date }) => {
+    getCompare: async (
+        userId: string,
+        options: { granularity: "day" | "week" | "month"; days: number; referenceDate?: Date },
+        filter?: AttributionFilter
+    ) => {
+        const familyId = await resolveFamilyId(userId);
         const reference = options.referenceDate ?? new Date();
 
         const [currentRange, previousRange] = options.granularity === "month"
@@ -156,8 +241,8 @@ const ReportService = {
             : [getDayWindow(reference, options.days, 0), getDayWindow(reference, options.days, -1)];
 
         const [currentTotals, previousTotals] = await Promise.all([
-            getTotalsByCurrency(userId, currentRange),
-            getTotalsByCurrency(userId, previousRange),
+            getTotalsByCurrency(familyId, currentRange, filter),
+            getTotalsByCurrency(familyId, previousRange, filter),
         ]);
 
         const changes = computeChanges(currentTotals, previousTotals);
@@ -172,8 +257,8 @@ const ReportService = {
         }
 
         const [currentDaily, previousDaily] = await Promise.all([
-            getDailyBreakdown(userId, currentRange),
-            getDailyBreakdown(userId, previousRange),
+            getDailyBreakdown(familyId, currentRange, filter),
+            getDailyBreakdown(familyId, previousRange, filter),
         ]);
 
         return {

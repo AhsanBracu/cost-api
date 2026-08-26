@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import multer from "multer";
+import mongoose from "mongoose";
 import { AppError } from "../errors/AppError";
 
 export const notFoundHandler = (req: Request, res: Response) => {
@@ -14,6 +15,13 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
 
     if (err instanceof multer.MulterError) {
         res.status(400).json({ error: err.message });
+        return;
+    }
+
+    // A malformed id in a /:id route is the client's mistake, not a server
+    // fault -- without this it surfaces as an opaque 500.
+    if (err instanceof mongoose.Error.CastError && err.kind === "ObjectId") {
+        res.status(400).json({ error: `"${err.value}" is not a valid id` });
         return;
     }
 

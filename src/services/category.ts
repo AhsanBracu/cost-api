@@ -1,3 +1,4 @@
+import { resolveFamilyId } from "./familyContext";
 import { z } from "zod";
 import Category from "../models/CategoryModel";
 import { NotFoundError, ConflictError } from "../errors/AppError";
@@ -27,29 +28,32 @@ const DEFAULT_CATEGORIES = [
 
 const CategoryService = {
     listCategories: async (userId: string) => {
-        const existing = await Category.find({ user: userId }).sort({ name: 1 });
+        const familyId = await resolveFamilyId(userId);
+        const existing = await Category.find({ family: familyId }).sort({ name: 1 });
         if (existing.length > 0)
             return existing;
 
-        await Category.insertMany(DEFAULT_CATEGORIES.map((c) => ({ ...c, user: userId })));
-        return Category.find({ user: userId }).sort({ name: 1 });
+        await Category.insertMany(DEFAULT_CATEGORIES.map((c) => ({ ...c, family: familyId })));
+        return Category.find({ family: familyId }).sort({ name: 1 });
     },
 
     createCategory: async (userId: string, data: CreateCategoryInput) => {
-        const existing = await Category.findOne({ user: userId, name: data.name });
+        const familyId = await resolveFamilyId(userId);
+        const existing = await Category.findOne({ family: familyId, name: data.name });
         if (existing)
             throw new ConflictError("A category with this name already exists");
 
-        return Category.create({ ...data, user: userId });
+        return Category.create({ ...data, family: familyId });
     },
 
     updateCategory: async (userId: string, categoryId: string, data: UpdateCategoryInput) => {
-        const category = await Category.findOne({ _id: categoryId, user: userId });
+        const familyId = await resolveFamilyId(userId);
+        const category = await Category.findOne({ _id: categoryId, family: familyId });
         if (!category)
             throw new NotFoundError("Category not found");
 
         if (data.name && data.name !== category.name) {
-            const existing = await Category.findOne({ user: userId, name: data.name });
+            const existing = await Category.findOne({ family: familyId, name: data.name });
             if (existing)
                 throw new ConflictError("A category with this name already exists");
         }
@@ -60,7 +64,8 @@ const CategoryService = {
     },
 
     deleteCategory: async (userId: string, categoryId: string) => {
-        const category = await Category.findOneAndDelete({ _id: categoryId, user: userId });
+        const familyId = await resolveFamilyId(userId);
+        const category = await Category.findOneAndDelete({ _id: categoryId, family: familyId });
         if (!category)
             throw new NotFoundError("Category not found");
     },

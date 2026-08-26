@@ -24,6 +24,17 @@ export const sendVerificationEmail = async (to: string, token: string) => {
     });
 };
 
+export const sendFamilyInviteEmail = async (to: string, token: string, familyName: string) => {
+    const inviteUrl = `${CLIENT_URL}/join-family?token=${token}`;
+
+    await transporter.sendMail({
+        from: process.env.GMAIL_USER,
+        to,
+        subject: `You've been invited to join ${familyName}`,
+        html: `<p>You've been invited to share expenses in <strong>${familyName}</strong>.</p><p>Click the link below to join. This invite expires in 7 days.</p><p><a href="${inviteUrl}">${inviteUrl}</a></p><p>If you don't have an account yet, sign up with this email address first, then open the link again.</p>`,
+    });
+};
+
 export const sendPasswordResetEmail = async (to: string, token: string) => {
     const resetUrl = `${CLIENT_URL}/reset-password?token=${token}`;
 

@@ -2,7 +2,9 @@ import { Document, Types } from "mongoose";
 
 /** A spending budget for one category in one month. */
 export interface IcategoryBudget extends Document {
-    user: Types.ObjectId;
+    family: Types.ObjectId;
+    /** Whose budget; null means the household-wide one. */
+    member: Types.ObjectId | null;
     year: number;
     month: number;
     category: string;
@@ -18,7 +20,9 @@ export interface IcategoryBudget extends Document {
  * cap the month without having to budget every category.
  */
 export interface ImonthlySpendLimit extends Document {
-    user: Types.ObjectId;
+    family: Types.ObjectId;
+    /** Whose limit; null means the household-wide one. */
+    member: Types.ObjectId | null;
     year: number;
     month: number;
     amount: number;

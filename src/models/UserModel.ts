@@ -9,6 +9,7 @@ name: {type:String,required:true},
 email :{type:String,required:true},
 password :{type:String,required:true},
 isVerified: {type:Boolean,required:true,default:false},
+family: {type:Schema.Types.ObjectId, ref:"Family"},
 })
 
 const saltRounds = 8

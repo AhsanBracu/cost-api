@@ -25,15 +25,15 @@ router.get('/', validate(listSavingsGoalsQuerySchema, 'query'), catchAsync(async
 
 router.get('/summary', validate(savingsSummaryQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const { year, month } = req.query as any;
-    const summary = await SavingsGoalService.getSummary(userId, year, month);
+    const { year, month, member } = req.query as any;
+    const summary = await SavingsGoalService.getSummary(userId, year, month, member);
     res.send(summary);
 }));
 
 router.get('/trend', validate(savingsTrendQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const { startYear, startMonth, endYear, endMonth } = req.query as any;
-    const trend = await SavingsGoalService.getTrend(userId, startYear, startMonth, endYear, endMonth);
+    const { startYear, startMonth, endYear, endMonth, member } = req.query as any;
+    const trend = await SavingsGoalService.getTrend(userId, startYear, startMonth, endYear, endMonth, member);
     res.send(trend);
 }));
 

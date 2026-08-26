@@ -5,37 +5,51 @@ import Category from "../models/CategoryModel";
 import Cost from "../models/CostModel";
 import { NotFoundError, ValidationError } from "../errors/AppError";
 import { setCategoryBudgetSchema, setMonthlyLimitSchema } from "../schemas/budget.schema";
+import { resolveFamilyId, assertOptionalFamilyMember } from "./familyContext";
+import ActivityLogService from "./activityLog";
 
 type SetCategoryBudgetInput = z.infer<typeof setCategoryBudgetSchema>;
 type SetMonthlyLimitInput = z.infer<typeof setMonthlyLimitSchema>;
 
+const MAX_TREND_MONTHS = 36;
+
 const previousMonthOf = (year: number, month: number) =>
     month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 
-const assertValidCategory = async (userId: string, category: string) => {
-    const exists = await Category.findOne({ user: userId, name: category });
+const assertValidCategory = async (familyId: string, category: string) => {
+    const exists = await Category.findOne({ family: familyId, name: category });
     if (!exists)
         throw new ValidationError(`"${category}" is not one of your categories`);
 };
 
+/** Normalises an optional member into the value stored on the document. */
+const memberKey = (member: string | null | undefined) => member ?? null;
+
 /**
- * A month with no budgets inherits the previous month's, since budgets
- * rarely change month to month. Copies are ordinary rows -- edit or delete
- * them freely. Only looks one month back, so a gap doesn't silently pull
- * forward a budget from long ago.
+ * A month with no budgets inherits the previous month's, since budgets rarely
+ * change month to month. Copies are ordinary rows -- edit or delete them
+ * freely. Only looks one month back, so a gap doesn't silently pull forward a
+ * budget from long ago. Seeding is per member, so one person's budgets
+ * carrying over doesn't imply anyone else's did.
  */
-const seedFromPreviousMonth = async (userId: string, year: number, month: number) => {
+const seedFromPreviousMonth = async (
+    familyId: string,
+    member: string | null,
+    year: number,
+    month: number
+) => {
     const previous = previousMonthOf(year, month);
 
     const [previousBudgets, previousLimit] = await Promise.all([
-        CategoryBudget.find({ user: userId, year: previous.year, month: previous.month }),
-        MonthlySpendLimit.findOne({ user: userId, year: previous.year, month: previous.month }),
+        CategoryBudget.find({ family: familyId, member, year: previous.year, month: previous.month }),
+        MonthlySpendLimit.findOne({ family: familyId, member, year: previous.year, month: previous.month }),
     ]);
 
     if (previousBudgets.length > 0) {
         await CategoryBudget.insertMany(
             previousBudgets.map((b) => ({
-                user: userId,
+                family: familyId,
+                member,
                 year,
                 month,
                 category: b.category,
@@ -47,7 +61,8 @@ const seedFromPreviousMonth = async (userId: string, year: number, month: number
 
     if (previousLimit) {
         await MonthlySpendLimit.create({
-            user: userId,
+            family: familyId,
+            member,
             year,
             month,
             amount: previousLimit.amount,
@@ -56,68 +71,143 @@ const seedFromPreviousMonth = async (userId: string, year: number, month: number
     }
 };
 
-const getMonthSpendByCategory = async (userId: string, year: number, month: number) => {
+/**
+ * Spend that a budget is measured against. A household budget covers every
+ * cost in the family; a member's budget covers what was spent *on* them
+ * (forWhom), which is what a personal allowance means.
+ */
+const getMonthSpendByCategory = async (
+    familyId: string,
+    member: string | null,
+    year: number,
+    month: number
+) => {
     const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
 
+    const match: Record<string, unknown> = {
+        family: new Types.ObjectId(familyId),
+        isDeleted: false,
+        date: { $gte: monthStart, $lte: monthEnd },
+    };
+    if (member)
+        match.forWhom = new Types.ObjectId(member);
+
     return Cost.aggregate([
-        { $match: { user: new Types.ObjectId(userId), isDeleted: false, date: { $gte: monthStart, $lte: monthEnd } } },
+        { $match: match },
         { $group: { _id: { category: "$category", currency: "$currency" }, spent: { $sum: "$amount" } } },
         { $project: { _id: 0, category: "$_id.category", currency: "$_id.currency", spent: 1 } },
     ]);
 };
 
 const BudgetService = {
-    getBudgets: async (userId: string, year: number, month: number) => {
-        const existing = await CategoryBudget.find({ user: userId, year, month });
-        const existingLimit = await MonthlySpendLimit.findOne({ user: userId, year, month });
+    getBudgets: async (userId: string, year: number, month: number, member?: string | null) => {
+        const familyId = await resolveFamilyId(userId);
+        await assertOptionalFamilyMember(familyId, member, "member");
+        const scope = memberKey(member);
+
+        const existing = await CategoryBudget.find({ family: familyId, member: scope, year, month });
+        const existingLimit = await MonthlySpendLimit.findOne({ family: familyId, member: scope, year, month });
 
         if (existing.length === 0 && !existingLimit)
-            await seedFromPreviousMonth(userId, year, month);
+            await seedFromPreviousMonth(familyId, scope, year, month);
 
         const [budgets, limit] = await Promise.all([
-            CategoryBudget.find({ user: userId, year, month }).sort({ category: 1 }),
-            MonthlySpendLimit.findOne({ user: userId, year, month }),
+            CategoryBudget.find({ family: familyId, member: scope, year, month }).sort({ category: 1 }),
+            MonthlySpendLimit.findOne({ family: familyId, member: scope, year, month }),
         ]);
 
-        return { year, month, budgets, monthlyLimit: limit };
+        return { year, month, member: scope, budgets, monthlyLimit: limit };
     },
 
     setCategoryBudget: async (userId: string, data: SetCategoryBudgetInput) => {
-        await assertValidCategory(userId, data.category);
+        const familyId = await resolveFamilyId(userId);
+        await assertValidCategory(familyId, data.category);
+        await assertOptionalFamilyMember(familyId, data.member, "member");
+        const scope = memberKey(data.member);
 
         // Upsert rather than create -- setting a budget that already exists
         // should update it, not fail.
-        return CategoryBudget.findOneAndUpdate(
-            { user: userId, year: data.year, month: data.month, category: data.category },
+        const budget = await CategoryBudget.findOneAndUpdate(
+            { family: familyId, member: scope, year: data.year, month: data.month, category: data.category },
             { $set: { amount: data.amount, currency: data.currency } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
+
+        await ActivityLogService.record({
+            familyId,
+            actorId: userId,
+            action: "updated",
+            entity: "budget",
+            entityId: budget?._id as string,
+            summary: `Set the ${scope ? "personal" : "household"} ${data.category} budget to ${data.amount} ${data.currency}`,
+        });
+
+        return budget;
     },
 
     deleteCategoryBudget: async (userId: string, budgetId: string) => {
-        const budget = await CategoryBudget.findOneAndDelete({ _id: budgetId, user: userId });
+        const familyId = await resolveFamilyId(userId);
+        const budget = await CategoryBudget.findOneAndDelete({ _id: budgetId, family: familyId });
         if (!budget)
             throw new NotFoundError("Budget not found");
+
+        await ActivityLogService.record({
+            familyId,
+            actorId: userId,
+            action: "deleted",
+            entity: "budget",
+            entityId: budget._id as string,
+            summary: `Removed the ${budget.category} budget`,
+        });
     },
 
     setMonthlyLimit: async (userId: string, data: SetMonthlyLimitInput) => {
-        return MonthlySpendLimit.findOneAndUpdate(
-            { user: userId, year: data.year, month: data.month },
+        const familyId = await resolveFamilyId(userId);
+        await assertOptionalFamilyMember(familyId, data.member, "member");
+        const scope = memberKey(data.member);
+
+        const limit = await MonthlySpendLimit.findOneAndUpdate(
+            { family: familyId, member: scope, year: data.year, month: data.month },
             { $set: { amount: data.amount, currency: data.currency } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
+
+        await ActivityLogService.record({
+            familyId,
+            actorId: userId,
+            action: "updated",
+            entity: "monthlyLimit",
+            entityId: limit?._id as string,
+            summary: `Set the ${scope ? "personal" : "household"} monthly limit to ${data.amount} ${data.currency}`,
+        });
+
+        return limit;
     },
 
-    deleteMonthlyLimit: async (userId: string, year: number, month: number) => {
-        const limit = await MonthlySpendLimit.findOneAndDelete({ user: userId, year, month });
+    deleteMonthlyLimit: async (userId: string, year: number, month: number, member?: string | null) => {
+        const familyId = await resolveFamilyId(userId);
+        await assertOptionalFamilyMember(familyId, member, "member");
+        const scope = memberKey(member);
+
+        const limit = await MonthlySpendLimit.findOneAndDelete({ family: familyId, member: scope, year, month });
         if (!limit)
             throw new NotFoundError("Monthly limit not set");
+
+        await ActivityLogService.record({
+            familyId,
+            actorId: userId,
+            action: "deleted",
+            entity: "monthlyLimit",
+            entityId: limit._id as string,
+            summary: `Removed the ${scope ? "personal" : "household"} monthly limit`,
+        });
     },
 
-    getBudgetSummary: async (userId: string, year: number, month: number) => {
-        const { budgets, monthlyLimit } = await BudgetService.getBudgets(userId, year, month);
-        const spendRows = await getMonthSpendByCategory(userId, year, month);
+    getBudgetSummary: async (userId: string, year: number, month: number, member?: string | null) => {
+        const familyId = await resolveFamilyId(userId);
+        const { budgets, monthlyLimit, member: scope } = await BudgetService.getBudgets(userId, year, month, member);
+        const spendRows = await getMonthSpendByCategory(familyId, scope, year, month);
 
         // Include categories that were spent on but never budgeted -- unplanned
         // spending is exactly what a budget view should surface.
@@ -177,13 +267,14 @@ const BudgetService = {
 
             if (budgetedInLimitCurrency > monthlyLimit.amount) {
                 warnings.push(
-                    `Category budgets total ${budgetedInLimitCurrency} ${monthlyLimit.currency}, which exceeds your overall monthly limit of ${monthlyLimit.amount} ${monthlyLimit.currency}.`
+                    `Category budgets total ${budgetedInLimitCurrency} ${monthlyLimit.currency}, which exceeds the monthly limit of ${monthlyLimit.amount} ${monthlyLimit.currency}.`
                 );
             }
         }
 
-        return { year, month, categories, overall, warnings };
+        return { year, month, member: scope, categories, overall, warnings };
     },
 };
 
+export { MAX_TREND_MONTHS };
 export default BudgetService;

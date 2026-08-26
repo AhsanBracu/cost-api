@@ -29,19 +29,22 @@ router.get('/', validate(listCostsQuerySchema, 'query'), catchAsync(async (req: 
 
 router.get('/reports/summary', validate(summaryQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const result = await ReportService.getSummary(userId, req.query as any);
+    const { paidBy, forWhom } = req.query as any;
+    const result = await ReportService.getSummary(userId, req.query as any, { paidBy, forWhom });
     res.send(result);
 }));
 
 router.get('/reports/trend', validate(trendQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const result = await ReportService.getTrend(userId, req.query as any);
+    const { paidBy, forWhom } = req.query as any;
+    const result = await ReportService.getTrend(userId, req.query as any, { paidBy, forWhom });
     res.send(result);
 }));
 
 router.get('/reports/compare', validate(compareQuerySchema, 'query'), catchAsync(async (req: Request, res: Response) => {
     const userId = getUserId(req);
-    const result = await ReportService.getCompare(userId, req.query as any);
+    const { paidBy, forWhom } = req.query as any;
+    const result = await ReportService.getCompare(userId, req.query as any, { paidBy, forWhom });
     res.send(result);
 }));
 

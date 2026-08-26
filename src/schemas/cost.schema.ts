@@ -19,6 +19,11 @@ export const createCostSchema = z.object({
     paymentMethod: z.enum(PaymentMethod),
     tags: tagsField,
     notes: z.string().optional(),
+    // Defaults to the current user when omitted.
+    paidBy: z.string().optional(),
+    // "" and "shared" both mean a shared household cost, since an HTML
+    // select cannot submit a real null.
+    forWhom: z.preprocess((v) => (v === "" || v === "shared" ? null : v), z.string().nullable()).optional(),
 });
 
 export const updateCostSchema = createCostSchema.partial();
@@ -36,4 +41,6 @@ export const listCostsQuerySchema = z.object({
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
     search: z.string().optional(),
+    paidBy: z.string().optional(),
+    forWhom: z.string().optional(),
 });
