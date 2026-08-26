@@ -6,7 +6,7 @@ const SavingsGoalSchema: Schema<IsavingsGoal> = new Schema({
     year: { type: Number, required: true },
     month: { type: Number, required: true, min: 1, max: 12 },
     targetAmount: { type: Number, required: true, min: 0 },
-    currency: { type: String, required: true, default: "USD" },
+    currency: { type: String, required: true, default: "SEK" },
     purpose: { type: String, required: true },
 }, { timestamps: true });
 

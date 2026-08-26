@@ -1,16 +1,5 @@
 import { Document, Types } from "mongoose";
 
-export enum CostCategory {
-    Food = "Food",
-    Transport = "Transport",
-    Housing = "Housing",
-    Utilities = "Utilities",
-    Entertainment = "Entertainment",
-    Health = "Health",
-    Shopping = "Shopping",
-    Other = "Other",
-}
-
 export enum PaymentMethod {
     Cash = "Cash",
     Card = "Card",
@@ -26,7 +15,7 @@ export interface Icost extends Document {
     date: Date;
     place?: string;
     description?: string;
-    category: CostCategory;
+    category: string;
     paymentMethod: PaymentMethod;
     receiptUrl?: string;
     tags: string[];

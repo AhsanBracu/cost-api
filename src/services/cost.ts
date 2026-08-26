@@ -1,6 +1,7 @@
 import { z } from "zod";
 import Cost from "../models/CostModel";
-import { NotFoundError } from "../errors/AppError";
+import Category from "../models/CategoryModel";
+import { NotFoundError, ValidationError } from "../errors/AppError";
 import { createCostSchema, updateCostSchema, listCostsQuerySchema } from "../schemas/cost.schema";
 
 type CreateCostInput = z.infer<typeof createCostSchema>;
@@ -9,8 +10,18 @@ type ListCostsQuery = z.infer<typeof listCostsQuerySchema>;
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// category is a free-text field validated against the user's own Category
+// list rather than a fixed enum -- see CategoryService for why (renaming
+// or deleting a category shouldn't retroactively break past costs).
+const assertValidCategory = async (userId: string, category: string) => {
+    const exists = await Category.findOne({ user: userId, name: category });
+    if (!exists)
+        throw new ValidationError(`"${category}" is not one of your categories`);
+};
+
 const CostService = {
     createCost: async (userId: string, data: CreateCostInput, receiptUrl?: string) => {
+        await assertValidCategory(userId, data.category);
         return Cost.create({ ...data, user: userId, receiptUrl });
     },
 
@@ -74,6 +85,9 @@ const CostService = {
         const cost = await Cost.findOne({ _id: costId, user: userId, isDeleted: false });
         if (!cost)
             throw new NotFoundError("Cost not found");
+
+        if (data.category)
+            await assertValidCategory(userId, data.category);
 
         Object.assign(cost, data);
         if (receiptUrl)

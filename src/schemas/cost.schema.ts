@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostCategory, PaymentMethod } from "../models/types/ICost";
+import { PaymentMethod } from "../models/types/ICost";
 
 // multer/multipart form submissions deliver a repeated "tags" field as a
 // single string (the last value), not an array, unlike JSON bodies.
@@ -11,11 +11,11 @@ const tagsField = z.preprocess((val) => {
 
 export const createCostSchema = z.object({
     amount: z.coerce.number().positive("Amount must be greater than 0"),
-    currency: z.string().length(3, "Currency must be a 3-letter ISO code").default("USD"),
+    currency: z.string().length(3, "Currency must be a 3-letter ISO code").default("SEK"),
     date: z.coerce.date(),
     place: z.string().optional(),
     description: z.string().optional(),
-    category: z.enum(CostCategory),
+    category: z.string().min(1, "Category is required"),
     paymentMethod: z.enum(PaymentMethod),
     tags: tagsField,
     notes: z.string().optional(),
@@ -28,7 +28,7 @@ export const listCostsQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
     sortBy: z.enum(["date", "amount", "createdAt"]).default("date"),
     sortOrder: z.enum(["asc", "desc"]).default("desc"),
-    category: z.enum(CostCategory).optional(),
+    category: z.string().optional(),
     paymentMethod: z.enum(PaymentMethod).optional(),
     place: z.string().optional(),
     minAmount: z.coerce.number().optional(),
