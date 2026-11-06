@@ -20,6 +20,7 @@ import SavingsGoal from "../models/SavingsGoalModel";
 import User from "../models/UserModel";
 import { Family, FamilyInvite } from "../models/FamilyModel";
 import ActivityLog from "../models/ActivityLogModel";
+import DailyInsight from "../models/DailyInsightModel";
 
 const MODELS = [
     Cost,
@@ -32,6 +33,7 @@ const MODELS = [
     Family,
     FamilyInvite,
     ActivityLog,
+    DailyInsight,
 ];
 
 const run = async () => {
